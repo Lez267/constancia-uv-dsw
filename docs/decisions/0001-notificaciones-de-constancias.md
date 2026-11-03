@@ -46,6 +46,7 @@ En la Alternativa A también es posible cumplir estos requisitos, pero el contro
 * Bad, porque el estudiante recibe el aviso con cierta demora, ya que el envío ocurre cuando el componente independiente procesa el registro y no en el instante en que se almacena la constancia.
 * Bad, porque se agrega un componente que construir, operar y monitorear (por ejemplo, vigilar registros que se acumulan o que fallan repetidamente), lo que aumenta la complejidad frente a la Alternativa A.
 * Riesgo: si el componente independiente envía la notificación y falla antes de marcarla como enviada, podría reintentar el envío y producir un duplicado. La restricción de unicidad evita registros duplicados, pero no elimina por completo esta ventana de fallo, porque no se supone que el proveedor garantice entrega única. Debe vigilarse y mitigarse en la implementación (por ejemplo, reduciendo esa ventana y registrando el estado de cada intento).
+* Riesgo (agregado en la Revisión 1): el componente independiente depende de cómo el proveedor reporta los errores de envío para decidir qué reintentar. Si esa forma de reportar cambia y no se actualiza la interpretación, un error podría clasificarse mal y provocar reintentos indebidos (riesgo de duplicados) o abandonar un envío recuperable (riesgo para RT3).
 * Trade-off: se acepta una mayor complejidad operativa y un envío diferido a cambio de independencia frente al proveedor, pendientes que no se pierden y un control de duplicados centralizado.
 
 ### Confirmation
@@ -55,6 +56,7 @@ Las siguientes comprobaciones podrían realizarse en una implementación futura;
 * **Continuidad con el correo caído (RT2 y RT3):** usar un proveedor simulado que no responda o devuelva error. Solicitar una constancia y verificar que se genera, se almacena y aparece en el historial (R2 y R3), y que existe un registro de notificación en estado pendiente. Al restablecer el proveedor simulado, verificar que el componente independiente envía la notificación y la marca como enviada.
 * **Prevención de duplicados (RT4):** revisar el esquema de datos para confirmar que existe una restricción de unicidad por constancia, e intentar registrar dos veces la notificación de la misma constancia (incluso de forma concurrente) para comprobar que se rechaza el segundo registro. Probar también con más de una instancia del componente independiente que un mismo registro pendiente no se envíe dos veces.
 * **Separación de responsabilidades:** en una revisión de código, confirmar que el flujo de generación de constancias no invoca directamente al proveedor externo.
+* **Interpretación de errores del proveedor (agregada en la Revisión 1):** con un proveedor simulado que reproduzca el formato de errores vigente, comprobar que el componente independiente distingue los errores que se pueden reintentar de los definitivos, y que cualquier error que no reconozca se trata como reintentable con un límite de intentos, quedando el registro en un estado que permita revisarlo manualmente en lugar de descartarlo.
 
 ## Pros and Cons of the Options
 
@@ -81,3 +83,13 @@ Después de almacenar una constancia, la aplicación registra una notificación 
 ## More Information
 
 Este documento es una propuesta académica elaborada el 2026-11-03; no representa una decisión institucional aprobada, por eso su estado es `proposed`. La decisión debe revisarse si cambian las condiciones originales, por ejemplo, si el proveedor modifica su interfaz, si cambia el volumen de notificaciones o si el aviso inmediato se vuelve un requisito.
+
+### Revisión 1. Cambio en el proveedor de notificaciones
+
+**Cambio recibido.** El proveedor externo de notificaciones modificó su interfaz de comunicación y cambió la forma en que reporta los errores de envío. Por ahora se conoce solo ese cambio general; no se han ejecutado pruebas contra el nuevo comportamiento ni se conocen sus detalles.
+
+**Impacto sobre la alternativa seleccionada.** En la Alternativa B toda la comunicación con el proveedor está en el componente independiente, así que el cambio se localiza ahí: en la parte que se comunica con el proveedor y en la lógica que interpreta sus errores para decidir si reintentar o no. No afecta la validación de identidad (R1), la generación y el almacenamiento de constancias (R2), el historial (R3), el registro de notificaciones pendientes ni la restricción de unicidad por constancia, por lo que RT2 sigue cumpliéndose aunque el proveedor cambie. El riesgo que debe revisarse es una mala interpretación de los nuevos errores: reintentar de más (posibles duplicados, RT4) o abandonar un envío recuperable (pendientes perdidos, RT3).
+
+**Estado de la decisión.** La decisión se mantiene como `proposed` y la justificación original no cambia. La nueva información no contradice los drivers: los refuerza, porque el cambio quedó contenido en un solo componente, que es justo lo que buscaba el aislamiento frente al proveedor. En la Alternativa A, la interpretación de errores estaría dentro del flujo de generación de constancias y el cambio llegaría más cerca de ese flujo. Se requeriría una evaluación posterior solo si el proveedor cambiara algo más profundo, por ejemplo, la forma de enviar solicitudes de manera que ya no pueda usarse el registro único por constancia, o si el cambio hiciera inviable el reintento diferido.
+
+**Qué se actualiza.** En Consequences se agregó el riesgo de depender de cómo el proveedor reporta errores. En Confirmation se agregó una comprobación para una implementación futura: pruebas con un proveedor simulado que reproduzca el formato de errores vigente, que verifiquen la distinción entre errores reintentables y definitivos y el tratamiento de errores no reconocidos. Estas comprobaciones no se han ejecutado.
